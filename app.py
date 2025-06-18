@@ -13,7 +13,7 @@ le = joblib.load("label_encoder.pkl")
 # -----------------------------
 # Webhook URL from Google Apps Script
 # -----------------------------
-WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyScinX1BquhKggb2_KuUwGPwI5-cFyooZmK_kCfk5yRSA7tsNpTHzAOfpFZc6IbgA9/exec"  # Replace this
+WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxV4ApISXns96-lDvHjj7-XBiorA24gxkoH7uuOkvwOYzwltoFRROfEa8i07ezu2a1siQ/exec"  # Replace this
 
 # -----------------------------
 # Streamlit UI
