@@ -4,6 +4,7 @@ import joblib
 import datetime
 import firebase_admin
 from firebase_admin import credentials, db
+import os
 
 # -----------------------------
 # Load model and encoder
@@ -12,34 +13,16 @@ model = joblib.load("iv_drip_model.pkl")
 le = joblib.load("label_encoder.pkl")
 
 # -----------------------------
-# Firebase credentials from Streamlit secrets
-# -----------------------------
-firebase_keys = {
-    "type": st.secrets["FIREBASE_TYPE"],
-    "project_id": st.secrets["FIREBASE_PROJECT_ID"],
-    "private_key_id": st.secrets["FIREBASE_PRIVATE_KEY_ID"],
-    "private_key": st.secrets["FIREBASE_PRIVATE_KEY"].replace("\\n", "\n"),
-    "client_email": st.secrets["FIREBASE_CLIENT_EMAIL"],
-    "client_id": st.secrets["FIREBASE_CLIENT_ID"],
-    "auth_uri": st.secrets["FIREBASE_AUTH_URI"],
-    "token_uri": st.secrets["FIREBASE_TOKEN_URI"],
-    "auth_provider_x509_cert_url": st.secrets["FIREBASE_AUTH_PROVIDER_X509_CERT_URL"],
-    "client_x509_cert_url": st.secrets["FIREBASE_CLIENT_X509_CERT_URL"]
-}
-
-# ✅ HARDCODED correct Realtime Database URL
-FIREBASE_DB_URL = "https://iv-drip-ml-log-default-rtdb.firebaseio.com"
-
-# -----------------------------
-# Firebase initialization
+# Initialize Firebase using firebase.json file from repo
 # -----------------------------
 try:
+    cred_path = os.path.join(os.path.dirname(__file__), "firebase.json")
     if not firebase_admin._apps:
-        cred = credentials.Certificate(firebase_keys)
+        cred = credentials.Certificate(cred_path)
         firebase_admin.initialize_app(cred, {
-            'databaseURL': FIREBASE_DB_URL
+            'databaseURL': 'https://iv-drip-ml-log-default-rtdb.firebaseio.com'
         })
-        st.success("✅ Firebase initialized successfully.")
+    st.success("✅ Firebase initialized successfully.")
 except Exception as init_error:
     st.error("❌ Firebase init failed:")
     st.code(str(init_error))
@@ -78,11 +61,11 @@ if st.button("Predict Drip Rate"):
             "timestamp": datetime.datetime.now().isoformat()
         }
 
-        # Firebase push with debug
+        # Firebase push
         try:
             ref = db.reference("/predictions")
             result = ref.push(log_data)
-            st.success("✅ Data pushed to Firebase.")
+            st.info("✅ Prediction logged to Firebase.")
             st.code(f"Pushed under key: {result.key}")
         except Exception as push_error:
             st.error("🔥 Firebase push failed:")
