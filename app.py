@@ -29,7 +29,7 @@ firebase_keys = {
 }
 
 # ✅ Use the exact Firebase Realtime Database URL you shared
-firebase_url = "https://iv-drip-ml-log-default-rtdb.firebaseio.com/"
+firebase_url = "https://iv-drip-ml-log-default-rtdb.firebaseio.com"
 
 # -----------------------------
 # Initialize Firebase once
