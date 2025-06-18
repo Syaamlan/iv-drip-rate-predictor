@@ -12,7 +12,7 @@ model = joblib.load("iv_drip_model.pkl")
 le = joblib.load("label_encoder.pkl")
 
 # -----------------------------
-# Firebase credentials from secrets
+# Firebase credentials from Streamlit secrets
 # -----------------------------
 firebase_keys = {
     "type": st.secrets["FIREBASE_TYPE"],
@@ -24,24 +24,24 @@ firebase_keys = {
     "auth_uri": st.secrets["FIREBASE_AUTH_URI"],
     "token_uri": st.secrets["FIREBASE_TOKEN_URI"],
     "auth_provider_x509_cert_url": st.secrets["FIREBASE_AUTH_PROVIDER_X509_CERT_URL"],
-    "client_x509_cert_url": st.secrets["FIREBASE_CLIENT_X509_CERT_URL"],
-    "universe_domain": "googleapis.com"
+    "client_x509_cert_url": st.secrets["FIREBASE_CLIENT_X509_CERT_URL"]
 }
 
-# ✅ Absolute correct Realtime DB URL
+# ✅ HARDCODED correct Realtime Database URL
 FIREBASE_DB_URL = "https://iv-drip-ml-log-default-rtdb.firebaseio.com"
 
 # -----------------------------
-# Initialize Firebase (hardcoded DB URL to avoid fallback errors)
+# Firebase initialization
 # -----------------------------
 try:
     if not firebase_admin._apps:
         cred = credentials.Certificate(firebase_keys)
         firebase_admin.initialize_app(cred, {
-            "databaseURL": FIREBASE_DB_URL
+            'databaseURL': FIREBASE_DB_URL
         })
+        st.success("✅ Firebase initialized successfully.")
 except Exception as init_error:
-    st.error("❌ Firebase initialization failed.")
+    st.error("❌ Firebase init failed:")
     st.code(str(init_error))
 
 # -----------------------------
@@ -57,16 +57,18 @@ concentration = st.number_input("Concentration (mcg/ml)", min_value=1.0, step=50
 
 if st.button("Predict Drip Rate"):
     try:
-        # Encode input
+        # Encode medication
         med_code = le.transform([medication])[0]
+
+        # Prepare input
         X_new = pd.DataFrame([[med_code, dosage, weight, concentration]],
                              columns=["Med_Code", "Dosage (mcg/kg/min)", "Patient Weight (kg)", "Concentration (mcg/ml)"])
 
-        # Prediction
+        # Predict
         predicted_rate = model.predict(X_new)[0]
         st.success(f"💧 Predicted Drip Rate: {predicted_rate:.2f} ml/hr")
 
-        # Prepare data
+        # Prepare data for Firebase
         log_data = {
             "medication": medication,
             "dosage": dosage,
@@ -76,18 +78,16 @@ if st.button("Predict Drip Rate"):
             "timestamp": datetime.datetime.now().isoformat()
         }
 
-        # Firebase push
+        # Firebase push with debug
         try:
             ref = db.reference("/predictions")
-            ref.push(log_data)
-            st.info("✅ Data logged to Firebase.")
-        except Exception as firebase_push_error:
+            result = ref.push(log_data)
+            st.success("✅ Data pushed to Firebase.")
+            st.code(f"Pushed under key: {result.key}")
+        except Exception as push_error:
             st.error("🔥 Firebase push failed:")
-            st.code(str(firebase_push_error))
+            st.code(repr(push_error))
 
-    except Exception as prediction_error:
-        st.error("❌ Error during prediction:")
-        st.code(str(prediction_error))
-
-    except Exception as prediction_error:
-        st.error(f"❌ Error during prediction: {prediction_error}")
+    except Exception as model_error:
+        st.error("❌ Model prediction failed:")
+        st.code(repr(model_error))
