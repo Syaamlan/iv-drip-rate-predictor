@@ -29,7 +29,16 @@ firebase_keys = {
 }
 
 # ✅ Correct Realtime Database URL
+# Firebase URL
 firebase_url = "https://iv-drip-ml-log-default-rtdb.firebaseio.com"
+
+# Initialize Firebase
+if not firebase_admin._apps:
+    cred = credentials.Certificate(firebase_keys)
+    firebase_admin.initialize_app(cred, {
+        'databaseURL': firebase_url  # ✅ Use the correct URL here!
+    })
+
 
 # -----------------------------
 # Initialize Firebase
