@@ -6,19 +6,19 @@ import firebase_admin
 from firebase_admin import credentials, db
 
 # -----------------------------
-# Load the trained model
+# Load model and encoder
 # -----------------------------
 model = joblib.load("iv_drip_model.pkl")
 le = joblib.load("label_encoder.pkl")
 
 # -----------------------------
-# Firebase config from Streamlit secrets
+# Firebase credentials from secrets
 # -----------------------------
 firebase_keys = {
     "type": st.secrets["FIREBASE_TYPE"],
     "project_id": st.secrets["FIREBASE_PROJECT_ID"],
     "private_key_id": st.secrets["FIREBASE_PRIVATE_KEY_ID"],
-    "private_key": st.secrets["FIREBASE_PRIVATE_KEY"].replace('\\n', '\n'),
+    "private_key": st.secrets["FIREBASE_PRIVATE_KEY"].replace("\\n", "\n"),
     "client_email": st.secrets["FIREBASE_CLIENT_EMAIL"],
     "client_id": st.secrets["FIREBASE_CLIENT_ID"],
     "auth_uri": st.secrets["FIREBASE_AUTH_URI"],
@@ -28,29 +28,21 @@ firebase_keys = {
     "universe_domain": "googleapis.com"
 }
 
-# ✅ Correct Realtime Database URL
-# Firebase URL
-firebase_url = "https://iv-drip-ml-log-default-rtdb.firebaseio.com"
-
-# Initialize Firebase
-if not firebase_admin._apps:
-    cred = credentials.Certificate(firebase_keys)
-    firebase_admin.initialize_app(cred, {
-        'databaseURL': firebase_url  # ✅ Use the correct URL here!
-    })
-
+# ✅ Absolute correct Realtime DB URL
+FIREBASE_DB_URL = "https://iv-drip-ml-log-default-rtdb.firebaseio.com"
 
 # -----------------------------
-# Initialize Firebase
+# Initialize Firebase (hardcoded DB URL to avoid fallback errors)
 # -----------------------------
 try:
     if not firebase_admin._apps:
         cred = credentials.Certificate(firebase_keys)
         firebase_admin.initialize_app(cred, {
-            'databaseURL': firebase_url
+            "databaseURL": FIREBASE_DB_URL
         })
-except Exception as e:
-    st.warning(f"⚠️ Firebase initialization failed: {e}")
+except Exception as init_error:
+    st.error("❌ Firebase initialization failed.")
+    st.code(str(init_error))
 
 # -----------------------------
 # Streamlit UI
@@ -65,18 +57,16 @@ concentration = st.number_input("Concentration (mcg/ml)", min_value=1.0, step=50
 
 if st.button("Predict Drip Rate"):
     try:
-        # Encode medication
+        # Encode input
         med_code = le.transform([medication])[0]
-
-        # Prepare input for prediction
         X_new = pd.DataFrame([[med_code, dosage, weight, concentration]],
                              columns=["Med_Code", "Dosage (mcg/kg/min)", "Patient Weight (kg)", "Concentration (mcg/ml)"])
 
-        # Predict
+        # Prediction
         predicted_rate = model.predict(X_new)[0]
         st.success(f"💧 Predicted Drip Rate: {predicted_rate:.2f} ml/hr")
 
-        # Log input to Firebase
+        # Prepare data
         log_data = {
             "medication": medication,
             "dosage": dosage,
@@ -86,12 +76,18 @@ if st.button("Predict Drip Rate"):
             "timestamp": datetime.datetime.now().isoformat()
         }
 
+        # Firebase push
         try:
             ref = db.reference("/predictions")
             ref.push(log_data)
-            st.info("✅ Prediction logged to Firebase.")
-        except Exception as firebase_error:
-            st.error(f"🔥 Firebase push failed: {firebase_error}")
+            st.info("✅ Data logged to Firebase.")
+        except Exception as firebase_push_error:
+            st.error("🔥 Firebase push failed:")
+            st.code(str(firebase_push_error))
+
+    except Exception as prediction_error:
+        st.error("❌ Error during prediction:")
+        st.code(str(prediction_error))
 
     except Exception as prediction_error:
         st.error(f"❌ Error during prediction: {prediction_error}")
