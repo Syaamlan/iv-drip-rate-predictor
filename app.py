@@ -2,36 +2,29 @@ import streamlit as st
 import pandas as pd
 import joblib
 import datetime
-import firebase_admin
-from firebase_admin import credentials, db
-import os
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 # -----------------------------
-# Load model and encoder
+# Load ML model and encoder
 # -----------------------------
 model = joblib.load("iv_drip_model.pkl")
 le = joblib.load("label_encoder.pkl")
 
 # -----------------------------
-# Initialize Firebase using firebase.json file from repo
+# Google Sheets Authentication
 # -----------------------------
-try:
-    cred_path = os.path.join(os.path.dirname(__file__), "firebase.json")
-    if not firebase_admin._apps:
-        cred = credentials.Certificate(cred_path)
-        firebase_admin.initialize_app(cred, {
-            'databaseURL': 'https://iv-drip-ml-log-default-rtdb.firebaseio.com'
-        })
-    st.success("✅ Firebase initialized successfully.")
-except Exception as init_error:
-    st.error("❌ Firebase init failed:")
-    st.code(str(init_error))
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+creds = ServiceAccountCredentials.from_json_keyfile_name("google-credentials.json", scope)
+client = gspread.authorize(creds)
+
+# Open the sheet (replace with your exact sheet name)
+sheet = client.open("iv_drip_log").worksheet("Sheet1")
 
 # -----------------------------
 # Streamlit UI
 # -----------------------------
 st.title("💧 IV Drip Rate Predictor")
-st.markdown("Enter patient and medication details below:")
 
 medication = st.selectbox("Select Medication", le.classes_)
 dosage = st.number_input("Dosage (mcg/kg/min)", min_value=0.0, step=0.1)
@@ -40,10 +33,8 @@ concentration = st.number_input("Concentration (mcg/ml)", min_value=1.0, step=50
 
 if st.button("Predict Drip Rate"):
     try:
-        # Encode medication
+        # Encode input
         med_code = le.transform([medication])[0]
-
-        # Prepare input
         X_new = pd.DataFrame([[med_code, dosage, weight, concentration]],
                              columns=["Med_Code", "Dosage (mcg/kg/min)", "Patient Weight (kg)", "Concentration (mcg/ml)"])
 
@@ -51,25 +42,22 @@ if st.button("Predict Drip Rate"):
         predicted_rate = model.predict(X_new)[0]
         st.success(f"💧 Predicted Drip Rate: {predicted_rate:.2f} ml/hr")
 
-        # Prepare data for Firebase
-        log_data = {
-            "medication": medication,
-            "dosage": dosage,
-            "weight": weight,
-            "concentration": concentration,
-            "predicted_rate": predicted_rate,
-            "timestamp": datetime.datetime.now().isoformat()
-        }
+        # Log to Google Sheet (column order must match header)
+        row = [
+            medication,
+            dosage,
+            weight,
+            concentration,
+            round(predicted_rate, 2),
+            datetime.datetime.now().isoformat()
+        ]
+        sheet.append_row(row)
+        st.info("✅ Prediction logged to Google Sheets.")
 
-        # Firebase push
-        try:
-            ref = db.reference("/predictions")
-            result = ref.push(log_data)
-            st.info("✅ Prediction logged to Firebase.")
-            st.code(f"Pushed under key: {result.key}")
-        except Exception as push_error:
-            st.error("🔥 Firebase push failed:")
-            st.code(repr(push_error))
+    except Exception as e:
+        st.error("❌ Error during prediction or logging:")
+        st.code(str(e))
+
 
     except Exception as model_error:
         st.error("❌ Model prediction failed:")
