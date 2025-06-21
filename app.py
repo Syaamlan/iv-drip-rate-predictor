@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import joblib
 import datetime
-import requests
+import gspread
+from google.oauth2.service_account import Credentials
 
 # -----------------------------
 # Load trained model & encoder
@@ -11,9 +12,18 @@ model = joblib.load("iv_drip_model.pkl")
 le = joblib.load("label_encoder.pkl")
 
 # -----------------------------
-# Google Apps Script Webhook
+# Google Sheets Authentication
 # -----------------------------
-WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxV4ApISXns96-lDvHjj7-XBiorA24gxkoH7uuOkvwOYzwltoFRROfEa8i07ezu2a1siQ/exec"
+creds_dict = st.secrets["google_sheets"]
+scopes = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+client = gspread.authorize(creds)
+
+# Open the sheet (make sure sheet name is correct)
+sheet = client.open("iv_drip_log").worksheet("Sheet1")
 
 # -----------------------------
 # Streamlit Web Interface
@@ -34,35 +44,25 @@ if st.button("Predict Drip Rate"):
         med_code = le.transform([medication])[0]
 
         # Prepare input
-        input_df = pd.DataFrame([[med_code, dosage, weight, concentration]],
-                                columns=["Med_Code", "Dosage (mcg/kg/min)", "Patient Weight (kg)", "Concentration (mcg/ml)"])
+        input_df = pd.DataFrame([[medication, dosage, weight, concentration]],
+            columns=["Medication", "Dosage (mcg/kg/min)", "Patient Weight (kg)", "Concentration (mcg/ml)"])
 
         # Predict
-        predicted_rate = model.predict(input_df)[0]
+        predicted_rate = model.predict([[med_code, dosage, weight, concentration]])[0]
         st.success(f"💧 Predicted Drip Rate: {predicted_rate:.2f} ml/hr")
 
-        # Log to Google Sheets
-        payload = {
-            "patient_name": patient_name,
-            "medication": medication,
-            "dosage": dosage,
-            "weight": weight,
-            "concentration": concentration,
-            "predicted_rate": round(predicted_rate, 2),
-            "timestamp": datetime.datetime.now().isoformat()
-        }
-
-        response = requests.post(WEBHOOK_URL, json=payload)
-
-        if response.status_code == 200:
-            st.info("✅ Prediction logged to Google Sheets")
-        else:
-            st.error("❌ Failed to log. Check webhook URL or permissions.")
-            st.code(response.text)
-
-    except Exception as e:
-        st.error("❌ Prediction or logging error:")
-        st.code(str(e))
+        # Log to Google Sheet
+        row = [
+            datetime.datetime.now().isoformat(),
+            patient_name,
+            medication,
+            dosage,
+            weight,
+            concentration,
+            round(predicted_rate, 2)
+        ]
+        sheet.append_row(row)
+        st.info("✅ Prediction logged to Google Sheets")
 
     except Exception as e:
         st.error("❌ Prediction or logging error:")
