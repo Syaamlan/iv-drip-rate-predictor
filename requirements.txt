@@ -3,3 +3,5 @@ pandas
 joblib
 scikit-learn
 requests
+gspread
+oauth2client
